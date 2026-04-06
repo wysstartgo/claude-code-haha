@@ -25,6 +25,7 @@ type ChatStore = {
   } | null
   tokenUsage: TokenUsage
   elapsedSeconds: number
+  statusVerb: string
   connectedSessionId: string | null
   slashCommands: Array<{ name: string; description: string }>
 
@@ -56,6 +57,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   pendingPermission: null,
   tokenUsage: { input_tokens: 0, output_tokens: 0 },
   elapsedSeconds: 0,
+  statusVerb: '',
   connectedSessionId: null,
   slashCommands: [],
 
@@ -190,7 +192,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       case 'status':
         set({
           chatState: msg.state,
-          ...(msg.state === 'idle' ? { activeThinkingId: null } : {}),
+          ...(msg.verb ? { statusVerb: msg.verb } : {}),
+          ...(msg.tokens ? { tokenUsage: { ...get().tokenUsage, output_tokens: msg.tokens } } : {}),
+          ...(msg.state === 'idle' ? { activeThinkingId: null, statusVerb: '' } : {}),
         })
         if (msg.state === 'idle' && elapsedTimer) {
           clearInterval(elapsedTimer)
