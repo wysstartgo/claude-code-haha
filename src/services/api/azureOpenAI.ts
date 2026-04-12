@@ -105,7 +105,13 @@ export function resolveAzureOpenAIDeployment(model: string): string {
 
   const codex = resolveCodexDeployment(trimmed)
   if (codex) {
-    if (codex === trimmed || codex.toLowerCase().includes('codex')) {
+    const codexLower = codex.toLowerCase()
+    if (
+      codex === trimmed ||
+      codexLower === 'gpt-5.2-codex' ||
+      codexLower === 'gpt-5.3-codex' ||
+      codexLower === 'gpt-5.4-codex'
+    ) {
       throw new Error(
         `Missing Azure OpenAI deployment mapping for ${trimmed}. Set AZURE_OPENAI_CODEX_DEPLOYMENT or settings.modelOverrides["${trimmed}"] to your deployment name.`,
       )

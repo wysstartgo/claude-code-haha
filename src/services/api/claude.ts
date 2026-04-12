@@ -1028,7 +1028,7 @@ async function* queryModel(
 > {
   if (getAPIProvider() === 'azureOpenAI') {
     try {
-      const systemText = systemPrompt.join('\\n')
+      const systemText = systemPrompt.join('\n')
       const maxOutputTokens =
         options.maxOutputTokensOverride ??
         getModelMaxOutputTokens(options.model).default
