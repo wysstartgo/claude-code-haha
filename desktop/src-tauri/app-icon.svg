@@ -1,48 +1,66 @@
 <svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="brandStroke" x1="158" y1="136" x2="378" y2="390" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#FF9568"/>
-      <stop offset="0.5" stop-color="#F07C54"/>
-      <stop offset="1" stop-color="#C65F35"/>
+    <linearGradient id="cardSurface" x1="108" y1="82" x2="387" y2="430" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFEFC"/>
+      <stop offset="0.54" stop-color="#F5F2ED"/>
+      <stop offset="1" stop-color="#DDD8D2"/>
     </linearGradient>
-    <linearGradient id="brandSpark" x1="256" y1="120" x2="256" y2="284" gradientUnits="userSpaceOnUse">
+    <linearGradient id="cardGloss" x1="256" y1="84" x2="256" y2="247" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="brandStroke" x1="156" y1="144" x2="372" y2="386" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FF9A72"/>
+      <stop offset="0.52" stop-color="#F18258"/>
+      <stop offset="1" stop-color="#C86439"/>
+    </linearGradient>
+    <linearGradient id="brandSpark" x1="256" y1="145" x2="256" y2="263" gradientUnits="userSpaceOnUse">
       <stop stop-color="#FFB08B"/>
-      <stop offset="0.55" stop-color="#FF885F"/>
-      <stop offset="1" stop-color="#E76A43"/>
+      <stop offset="0.58" stop-color="#FF8A62"/>
+      <stop offset="1" stop-color="#E26C45"/>
     </linearGradient>
+    <filter id="cardShadow" x="64" y="76" width="384" height="392" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#534330" flood-opacity="0.22"/>
+    </filter>
   </defs>
 
-  <g transform="translate(-31 -31) scale(1.12)">
+  <g filter="url(#cardShadow)">
+    <rect x="96" y="92" width="320" height="320" rx="82" fill="url(#cardSurface)"/>
+    <rect x="96.75" y="92.75" width="318.5" height="318.5" rx="81.25" stroke="#F5F1EB" stroke-width="1.5"/>
+    <path d="M121 146C168 117 231 107 302 118C344 124 379 138 405 159V239C370 222 324 211 273 208C210 203 158 188 121 163V146Z" fill="url(#cardGloss)"/>
+  </g>
+
+  <g transform="translate(-22 -18) scale(1.06)">
     <path
-      d="M161 191L226 255L161 320"
+      d="M168 193L230 255L168 317"
       stroke="url(#brandStroke)"
-      stroke-width="38"
+      stroke-width="33"
       stroke-linecap="round"
       stroke-linejoin="round"
     />
     <path
-      d="M353 176L402 188L348 356L308 345"
+      d="M344 178L391 189L341 348L303 338"
       stroke="url(#brandStroke)"
-      stroke-width="35"
+      stroke-width="30"
       stroke-linecap="round"
       stroke-linejoin="round"
     />
     <path
-      d="M224 343C246 362 275 363 298 344"
+      d="M225 332C245 349 272 350 295 333"
       stroke="url(#brandStroke)"
-      stroke-width="20"
+      stroke-width="17"
       stroke-linecap="round"
       stroke-linejoin="round"
     />
     <path
-      d="M302 259C312 246 327 247 336 255"
+      d="M301 253C310 242 323 243 331 251"
       stroke="url(#brandStroke)"
-      stroke-width="18"
+      stroke-width="15"
       stroke-linecap="round"
       stroke-linejoin="round"
     />
     <path
-      d="M256 136L266 176L306 167L274 197L303 225L264 217L256 257L248 217L209 225L238 197L206 167L246 176L256 136Z"
+      d="M256 145L265 176L296 167L272 191L295 213L264 207L256 238L248 207L217 213L240 191L216 167L247 176L256 145Z"
       fill="url(#brandSpark)"
     />
   </g>
