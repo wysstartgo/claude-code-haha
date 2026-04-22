@@ -5,6 +5,7 @@ import { Modal } from '../components/shared/Modal'
 import { useTranslation } from '../i18n'
 import { useUIStore } from '../stores/uiStore'
 import { useMcpStore } from '../stores/mcpStore'
+import { useSessionStore } from '../stores/sessionStore'
 import type { McpServerRecord, McpUpsertPayload } from '../types/mcp'
 
 type EditorMode =
@@ -38,6 +39,27 @@ type McpDraft = {
   oauthClientId: string
   oauthCallbackPort: string
 }
+
+type McpGroupKey =
+  | 'plugin'
+  | 'user'
+  | 'project'
+  | 'local'
+  | 'managed'
+  | 'enterprise'
+  | 'claudeai'
+  | 'dynamic'
+
+const MCP_GROUP_ORDER: McpGroupKey[] = [
+  'plugin',
+  'user',
+  'project',
+  'local',
+  'managed',
+  'enterprise',
+  'claudeai',
+  'dynamic',
+]
 
 const STATUS_TONE: Record<McpServerRecord['status'], string> = {
   connected: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20',
@@ -184,6 +206,28 @@ function transportLabel(transport: string, t: ReturnType<typeof useTranslation>)
   }
 }
 
+function getServerGroupKey(server: McpServerRecord): McpGroupKey {
+  if (server.name.startsWith('plugin:')) return 'plugin'
+  switch (server.scope) {
+    case 'user':
+    case 'project':
+    case 'local':
+    case 'managed':
+    case 'enterprise':
+    case 'claudeai':
+    case 'dynamic':
+      return server.scope
+    default:
+      return 'dynamic'
+  }
+}
+
+function scopeLabel(server: McpServerRecord, t: ReturnType<typeof useTranslation>) {
+  const group = getServerGroupKey(server)
+  if (group === 'plugin') return t('settings.mcp.scope.plugin')
+  return t(`settings.mcp.scope.${group}`)
+}
+
 function ToggleSwitch({
   checked,
   disabled,
@@ -314,7 +358,7 @@ function ServerRow({
             {transportLabel(server.transport, t)}
           </span>
           <span className="rounded-full bg-[var(--color-surface-hover)] px-2 py-1 font-medium text-[var(--color-text-secondary)]">
-            {t('settings.mcp.scope.user')}
+            {scopeLabel(server, t)}
           </span>
           <span className="truncate">{server.summary}</span>
         </div>
@@ -340,6 +384,8 @@ function ServerRow({
 export function McpSettings() {
   const { servers, selectedServer, isLoading, error, fetchServers, createServer, updateServer, deleteServer, toggleServer, reconnectServer, selectServer } = useMcpStore()
   const addToast = useUIStore((s) => s.addToast)
+  const sessions = useSessionStore((s) => s.sessions)
+  const activeSessionId = useSessionStore((s) => s.activeSessionId)
   const t = useTranslation()
   const [view, setView] = useState<EditorMode>({ type: 'list' })
   const [draft, setDraft] = useState<McpDraft>(createEmptyDraft)
@@ -348,20 +394,27 @@ export function McpSettings() {
   const [busyServerName, setBusyServerName] = useState<string | null>(null)
   const [pendingDeleteServer, setPendingDeleteServer] = useState<McpServerRecord | null>(null)
 
-  useEffect(() => {
-    void fetchServers(undefined, undefined)
-  }, [fetchServers])
+  const activeSession = sessions.find((session) => session.id === activeSessionId)
+  const currentWorkDir = activeSession?.workDir || undefined
 
-  const globalServers = useMemo(
-    () => servers.filter((server) => server.scope === 'user'),
-    [servers],
-  )
+  useEffect(() => {
+    void fetchServers(undefined, currentWorkDir)
+  }, [fetchServers, currentWorkDir])
+
+  const groupedServers = useMemo(() => {
+    const groups: Partial<Record<McpGroupKey, McpServerRecord[]>> = {}
+    for (const server of servers) {
+      const key = getServerGroupKey(server)
+      ;(groups[key] ??= []).push(server)
+    }
+    return groups
+  }, [servers])
 
   const stats = useMemo(() => ({
-    total: globalServers.length,
-    connected: globalServers.filter((server) => server.status === 'connected').length,
-    attention: globalServers.filter((server) => server.status === 'failed' || server.status === 'needs-auth').length,
-  }), [globalServers])
+    total: servers.length,
+    connected: servers.filter((server) => server.status === 'connected').length,
+    attention: servers.filter((server) => server.status === 'failed' || server.status === 'needs-auth').length,
+  }), [servers])
 
   const beginCreate = () => {
     setDraft(createEmptyDraft())
@@ -546,7 +599,7 @@ export function McpSettings() {
         <section className="rounded-[var(--radius-xl)] border border-[var(--color-border)] bg-[var(--color-surface)] p-6">
           <div className="grid gap-4 md:grid-cols-2">
             <InfoPair label={t('settings.mcp.form.transport')} value={transportLabel(server.transport, t)} />
-            <InfoPair label={t('settings.mcp.form.scope')} value={t('settings.mcp.scope.user')} />
+            <InfoPair label={t('settings.mcp.form.scope')} value={scopeLabel(server, t)} />
             <InfoPair label={t('settings.mcp.form.status')} value={server.statusLabel} />
             <InfoPair label={t('settings.mcp.form.location')} value={server.configLocation} />
           </div>
@@ -763,9 +816,6 @@ export function McpSettings() {
           <p className="mt-3 text-base text-[var(--color-text-secondary)]">
             {t('settings.mcp.description')}
           </p>
-          <p className="mt-3 text-sm text-[var(--color-text-tertiary)]">
-            {t('settings.mcp.globalOnlyHint')}
-          </p>
         </div>
         <Button variant="secondary" size="lg" onClick={beginCreate}>
           <span className="material-symbols-outlined text-[18px]">add</span>
@@ -779,7 +829,7 @@ export function McpSettings() {
         <StatCard label={t('settings.mcp.stats.attention')} value={stats.attention} icon="error" />
       </div>
 
-      {isLoading && globalServers.length === 0 ? (
+      {isLoading && servers.length === 0 ? (
         <div className="flex justify-center py-16">
           <div className="animate-spin h-6 w-6 rounded-full border-2 border-[var(--color-brand)] border-t-transparent" />
         </div>
@@ -789,39 +839,48 @@ export function McpSettings() {
           <p className="text-sm text-[var(--color-error)] mb-3">{error}</p>
           <button
             type="button"
-            onClick={() => void fetchServers(undefined, undefined)}
+            onClick={() => void fetchServers(undefined, currentWorkDir)}
             className="text-sm text-[var(--color-text-accent)] hover:underline"
           >
             {t('common.retry')}
           </button>
         </div>
-      ) : globalServers.length === 0 ? (
+      ) : servers.length === 0 ? (
         <div className="text-center py-16 rounded-2xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-container-low)]">
           <span className="material-symbols-outlined text-[40px] text-[var(--color-text-tertiary)] mb-3 block">dns</span>
           <p className="text-sm text-[var(--color-text-secondary)] mb-1">{t('settings.mcp.empty')}</p>
           <p className="text-xs text-[var(--color-text-tertiary)]">{t('settings.mcp.emptyHint')}</p>
         </div>
       ) : (
-        <section>
-          <div className="flex items-center justify-between mb-3">
-            <div className="text-[1.35rem] font-semibold text-[var(--color-text-primary)]">
-              {t('settings.mcp.scope.user')}
-            </div>
-            <div className="text-sm text-[var(--color-text-tertiary)]">{globalServers.length}</div>
-          </div>
-          <div className="rounded-[28px] border border-[var(--color-border)] bg-[var(--color-surface)] overflow-hidden">
-            {globalServers.map((server) => (
-              <ServerRow
-                key={`${server.scope}:${server.name}`}
-                server={server}
-                isBusy={busyServerName === server.name}
-                onOpen={() => beginEdit(server)}
-                onToggle={() => void handleToggle(server)}
-                t={t}
-              />
-            ))}
-          </div>
-        </section>
+        <div className="flex flex-col gap-6">
+          {MCP_GROUP_ORDER.map((group) => {
+            const groupServers = groupedServers[group]
+            if (!groupServers?.length) return null
+
+            return (
+              <section key={group}>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="text-[1.35rem] font-semibold text-[var(--color-text-primary)]">
+                    {group === 'plugin' ? t('settings.mcp.scope.plugin') : t(`settings.mcp.scope.${group}`)}
+                  </div>
+                  <div className="text-sm text-[var(--color-text-tertiary)]">{groupServers.length}</div>
+                </div>
+                <div className="rounded-[28px] border border-[var(--color-border)] bg-[var(--color-surface)] overflow-hidden">
+                  {groupServers.map((server) => (
+                    <ServerRow
+                      key={`${server.scope}:${server.name}`}
+                      server={server}
+                      isBusy={busyServerName === server.name}
+                      onOpen={() => beginEdit(server)}
+                      onToggle={() => void handleToggle(server)}
+                      t={t}
+                    />
+                  ))}
+                </div>
+              </section>
+            )
+          })}
+        </div>
       )}
 
       <Modal

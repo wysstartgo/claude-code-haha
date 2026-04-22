@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useTranslation } from '../../i18n'
 import { useChatStore } from '../../stores/chatStore'
-import { useTabStore } from '../../stores/tabStore'
+import { SETTINGS_TAB_ID, useTabStore } from '../../stores/tabStore'
+import { useUIStore } from '../../stores/uiStore'
 import { useSessionStore } from '../../stores/sessionStore'
 import { useTeamStore } from '../../stores/teamStore'
 import { sessionsApi } from '../../api/sessions'
@@ -18,6 +19,7 @@ import {
   findSlashTrigger,
   mergeSlashCommands,
   replaceSlashToken,
+  resolveSlashUiAction,
 } from './composerUtils'
 
 type GitInfo = { branch: string | null; repoName: string | null; workDir: string; changedFiles: number }
@@ -70,6 +72,7 @@ export function ChatInput({ variant = 'default' }: ChatInputProps) {
   const isWorkspaceMissing = activeSession?.workDirExists === false
   const canSubmit = !isWorkspaceMissing && (input.trim().length > 0 || (!isMemberSession && attachments.length > 0))
   const isHeroComposer = variant === 'hero' && !isMemberSession
+  const resolvedWorkDir = activeSession?.workDir || gitInfo?.workDir || undefined
 
   useEffect(() => {
     textareaRef.current?.focus()
@@ -295,8 +298,19 @@ export function ChatInput({ variant = 'default' }: ChatInputProps) {
     const text = input.trim()
     if ((!text && (!attachments.length || isMemberSession)) || isWorkspaceMissing) return
 
-    if (!isMemberSession && (text === '/mcp' || text === '/skills' || text === '/plugins')) {
-      setLocalSlashPanel(text.slice(1) as LocalSlashCommandName)
+    const slashUiAction = !isMemberSession && text.startsWith('/') ? resolveSlashUiAction(text.slice(1)) : null
+    if (slashUiAction?.type === 'panel') {
+      setLocalSlashPanel(slashUiAction.command as LocalSlashCommandName)
+      setInput('')
+      setSlashMenuOpen(false)
+      setFileSearchOpen(false)
+      setPlusMenuOpen(false)
+      return
+    }
+
+    if (slashUiAction?.type === 'settings') {
+      useUIStore.getState().setPendingSettingsTab(slashUiAction.tab)
+      useTabStore.getState().openTab(SETTINGS_TAB_ID, 'Settings', 'settings')
       setInput('')
       setSlashMenuOpen(false)
       setFileSearchOpen(false)
@@ -501,7 +515,7 @@ export function ChatInput({ variant = 'default' }: ChatInputProps) {
           {!isMemberSession && fileSearchOpen && (
             <FileSearchMenu
               ref={fileSearchRef}
-              cwd={gitInfo?.workDir || activeSession?.workDir || ''}
+              cwd={resolvedWorkDir || ''}
               filter={atFilter}
               onSelect={(_path, name) => {
                 if (atCursorPos >= 0) {
@@ -525,7 +539,7 @@ export function ChatInput({ variant = 'default' }: ChatInputProps) {
             <div ref={slashMenuRef}>
               <LocalSlashCommandPanel
                 command={localSlashPanel}
-                cwd={gitInfo?.workDir || activeSession?.workDir || undefined}
+                cwd={resolvedWorkDir}
                 onClose={() => setLocalSlashPanel(null)}
               />
             </div>
@@ -681,13 +695,13 @@ export function ChatInput({ variant = 'default' }: ChatInputProps) {
           <div className="mt-3 px-1">
             {hasMessages ? (
               <ProjectContextChip
-                workDir={gitInfo?.workDir || activeSession?.workDir}
+                workDir={resolvedWorkDir}
                 repoName={gitInfo?.repoName || null}
                 branch={gitInfo?.branch || null}
               />
             ) : (
               <DirectoryPicker
-                value={gitInfo?.workDir || activeSession?.workDir || ''}
+                value={resolvedWorkDir || ''}
                 onChange={async (newWorkDir) => {
                   if (!activeTabId) return
                   const oldId = activeTabId

@@ -6,6 +6,12 @@ import { Settings } from '../pages/Settings'
 import { usePluginStore } from '../stores/pluginStore'
 import { useSettingsStore } from '../stores/settingsStore'
 import { useSessionStore } from '../stores/sessionStore'
+import { useUIStore } from '../stores/uiStore'
+
+const MOCK_FETCH_SKILLS = vi.fn()
+const MOCK_FETCH_SKILL_DETAIL = vi.fn()
+const MOCK_FETCH_AGENTS = vi.fn()
+const MOCK_FETCH_SERVERS = vi.fn()
 
 vi.mock('../api/agents', () => ({
   agentsApi: {
@@ -34,27 +40,87 @@ vi.mock('../pages/AdapterSettings', () => ({
 }))
 
 vi.mock('../stores/agentStore', () => ({
-  useAgentStore: () => ({
-    activeAgents: [],
-    allAgents: [],
-    isLoading: false,
-    error: null,
-    selectedAgent: null,
-    fetchAgents: vi.fn(),
-    selectAgent: vi.fn(),
+  useAgentStore: Object.assign((selector?: (state: any) => unknown) => {
+    const state = {
+      activeAgents: [],
+      allAgents: [],
+      isLoading: false,
+      error: null,
+      selectedAgent: null,
+      fetchAgents: MOCK_FETCH_AGENTS,
+      selectAgent: vi.fn(),
+    }
+    return selector ? selector(state) : state
+  }, {
+    getState: () => ({
+      activeAgents: [],
+      allAgents: [],
+      isLoading: false,
+      error: null,
+      selectedAgent: null,
+      fetchAgents: MOCK_FETCH_AGENTS,
+      selectAgent: vi.fn(),
+    }),
   }),
 }))
 
 vi.mock('../stores/skillStore', () => ({
-  useSkillStore: () => ({
-    skills: [],
-    selectedSkill: null,
-    isLoading: false,
-    isDetailLoading: false,
-    error: null,
-    fetchSkills: vi.fn(),
-    fetchSkillDetail: vi.fn(),
-    clearSelection: vi.fn(),
+  useSkillStore: Object.assign((selector?: (state: any) => unknown) => {
+    const state = {
+      skills: [],
+      selectedSkill: null,
+      isLoading: false,
+      isDetailLoading: false,
+      error: null,
+      fetchSkills: MOCK_FETCH_SKILLS,
+      fetchSkillDetail: MOCK_FETCH_SKILL_DETAIL,
+      clearSelection: vi.fn(),
+    }
+    return selector ? selector(state) : state
+  }, {
+    getState: () => ({
+      skills: [],
+      selectedSkill: null,
+      isLoading: false,
+      isDetailLoading: false,
+      error: null,
+      fetchSkills: MOCK_FETCH_SKILLS,
+      fetchSkillDetail: MOCK_FETCH_SKILL_DETAIL,
+      clearSelection: vi.fn(),
+    }),
+  }),
+}))
+
+vi.mock('../stores/mcpStore', () => ({
+  useMcpStore: Object.assign((selector?: (state: any) => unknown) => {
+    const state = {
+      servers: [],
+      selectedServer: null,
+      isLoading: false,
+      error: null,
+      fetchServers: MOCK_FETCH_SERVERS,
+      createServer: vi.fn(),
+      updateServer: vi.fn(),
+      deleteServer: vi.fn(),
+      toggleServer: vi.fn(),
+      reconnectServer: vi.fn(),
+      selectServer: vi.fn(),
+    }
+    return selector ? selector(state) : state
+  }, {
+    getState: () => ({
+      servers: [],
+      selectedServer: null,
+      isLoading: false,
+      error: null,
+      fetchServers: MOCK_FETCH_SERVERS,
+      createServer: vi.fn(),
+      updateServer: vi.fn(),
+      deleteServer: vi.fn(),
+      toggleServer: vi.fn(),
+      reconnectServer: vi.fn(),
+      selectServer: vi.fn(),
+    }),
   }),
 }))
 
@@ -66,7 +132,9 @@ function switchToPluginsTab() {
 
 describe('Settings > Plugins tab', () => {
   beforeEach(() => {
+    vi.clearAllMocks()
     useSettingsStore.setState({ locale: 'en' })
+    useUIStore.setState({ pendingSettingsTab: null })
     useSessionStore.setState({
       sessions: [
         {
@@ -210,6 +278,44 @@ describe('Settings > Plugins tab', () => {
           mcpServers: ['github-api'],
           lspServers: [],
         },
+        commandEntries: [
+          {
+            name: 'review-pr',
+            description: 'Review the current pull request.',
+          },
+        ],
+        agentEntries: [
+          {
+            name: 'pr-reviewer',
+            description: 'Review pull request quality and risk.',
+          },
+        ],
+        hookEntries: [
+          {
+            event: 'SessionStart',
+            matcher: 'Write',
+            actions: ['echo preparing plugin runtime'],
+          },
+        ],
+        skillEntries: [
+          {
+            name: 'create-pr',
+            description: 'Create a pull request from the current branch.',
+          },
+          {
+            name: 'commit',
+            description: 'Commit the current staged changes.',
+            version: '1.0.0',
+          },
+        ],
+        mcpServerEntries: [
+          {
+            name: 'plugin:github:github-api',
+            displayName: 'github-api',
+            transport: 'http',
+            summary: 'https://api.github.com/mcp',
+          },
+        ],
         errors: [],
       },
     })
@@ -220,8 +326,119 @@ describe('Settings > Plugins tab', () => {
     expect(screen.getByText('Plugin Detail')).toBeInTheDocument()
     expect(screen.getByText('GitHub integration')).toBeInTheDocument()
     expect(screen.getByText('Bundled capabilities')).toBeInTheDocument()
-    expect(screen.getByText('review-pr')).toBeInTheDocument()
+    expect(screen.getByText('/review-pr')).toBeInTheDocument()
+    expect(screen.getByText('Review pull request quality and risk.')).toBeInTheDocument()
+    expect(screen.getByText('echo preparing plugin runtime')).toBeInTheDocument()
+    expect(screen.getByText('Create a pull request from the current branch.')).toBeInTheDocument()
+    expect(screen.getByText('https://api.github.com/mcp')).toBeInTheDocument()
     expect(screen.getByText('Apply changes')).toBeInTheDocument()
     expect(screen.getByText('Uninstall')).toBeInTheDocument()
+  })
+
+  it('navigates plugin skills into the shared Skills page flow', () => {
+    usePluginStore.setState({
+      selectedPlugin: {
+        id: 'telegram@claude-plugins-official',
+        name: 'telegram',
+        marketplace: 'claude-plugins-official',
+        scope: 'user',
+        enabled: true,
+        hasErrors: false,
+        isBuiltin: false,
+        description: 'Telegram integration',
+        componentCounts: {
+          commands: 0,
+          agents: 0,
+          skills: 1,
+          hooks: 0,
+          mcpServers: 0,
+          lspServers: 0,
+        },
+        capabilities: {
+          commands: [],
+          agents: [],
+          skills: ['telegram:access'],
+          hooks: [],
+          mcpServers: [],
+          lspServers: [],
+        },
+        commandEntries: [],
+        agentEntries: [],
+        hookEntries: [],
+        skillEntries: [
+          {
+            name: 'telegram:access',
+            displayName: 'access',
+            description: 'Manage Telegram access.',
+            pluginName: 'telegram',
+          },
+        ],
+        mcpServerEntries: [],
+        errors: [],
+      },
+    })
+
+    render(<Settings />)
+    switchToPluginsTab()
+
+    fireEvent.click(screen.getByText('access'))
+
+    expect(MOCK_FETCH_SKILL_DETAIL).toHaveBeenCalledWith('plugin', 'telegram:access', '/workspace/project', 'plugins')
+  })
+
+  it('disables shared navigation cards for disabled plugins', () => {
+    usePluginStore.setState({
+      selectedPlugin: {
+        id: 'codex@openai-codex',
+        name: 'codex',
+        marketplace: 'openai-codex',
+        scope: 'user',
+        enabled: false,
+        hasErrors: false,
+        isBuiltin: false,
+        description: 'Use Codex from Claude Code',
+        componentCounts: {
+          commands: 0,
+          agents: 1,
+          skills: 1,
+          hooks: 0,
+          mcpServers: 0,
+          lspServers: 0,
+        },
+        capabilities: {
+          commands: [],
+          agents: ['codex:codex-rescue'],
+          skills: ['codex:gpt-5-4-prompting'],
+          hooks: [],
+          mcpServers: [],
+          lspServers: [],
+        },
+        commandEntries: [],
+        agentEntries: [
+          {
+            name: 'codex:codex-rescue',
+            displayName: 'codex-rescue',
+            description: 'Delegate to Codex.',
+          },
+        ],
+        hookEntries: [],
+        skillEntries: [
+          {
+            name: 'codex:gpt-5-4-prompting',
+            displayName: 'gpt-5-4-prompting',
+            description: 'Prompting guide.',
+          },
+        ],
+        mcpServerEntries: [],
+        errors: [],
+      },
+    })
+
+    render(<Settings />)
+    switchToPluginsTab()
+
+    expect(screen.getAllByText('Enable this plugin and apply changes before opening its skills, agents, or MCP entries in the shared management pages.').length).toBeGreaterThan(0)
+    expect(screen.getByRole('button', { name: /codex-rescue/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /gpt-5-4-prompting/i })).toBeDisabled()
   })
 })

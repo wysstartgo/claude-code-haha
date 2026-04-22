@@ -12,6 +12,38 @@ export type PluginCapabilities = Record<PluginCapabilityKey, string[]>
 
 export type PluginComponentCounts = Record<PluginCapabilityKey, number>
 
+export type PluginSkillEntry = {
+  name: string
+  displayName?: string
+  description: string
+  version?: string
+  pluginName?: string
+}
+
+export type PluginCommandEntry = {
+  name: string
+  description: string
+}
+
+export type PluginAgentEntry = {
+  name: string
+  displayName?: string
+  description: string
+}
+
+export type PluginHookEntry = {
+  event: string
+  matcher?: string
+  actions: string[]
+}
+
+export type PluginMcpServerEntry = {
+  name: string
+  displayName?: string
+  transport: string
+  summary: string
+}
+
 export type PluginSummary = {
   id: string
   name: string
@@ -31,6 +63,11 @@ export type PluginSummary = {
 
 export type PluginDetail = PluginSummary & {
   capabilities: PluginCapabilities
+  commandEntries: PluginCommandEntry[]
+  agentEntries: PluginAgentEntry[]
+  hookEntries: PluginHookEntry[]
+  skillEntries: PluginSkillEntry[]
+  mcpServerEntries: PluginMcpServerEntry[]
 }
 
 export type PluginMarketplaceSummary = {

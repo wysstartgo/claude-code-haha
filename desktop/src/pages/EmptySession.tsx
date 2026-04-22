@@ -4,7 +4,7 @@ import { useTranslation } from '../i18n'
 import { useSessionStore } from '../stores/sessionStore'
 import { useChatStore } from '../stores/chatStore'
 import { useUIStore } from '../stores/uiStore'
-import { useTabStore } from '../stores/tabStore'
+import { SETTINGS_TAB_ID, useTabStore } from '../stores/tabStore'
 import { DirectoryPicker } from '../components/shared/DirectoryPicker'
 import { PermissionModeSelector } from '../components/controls/PermissionModeSelector'
 import { ModelSelector } from '../components/controls/ModelSelector'
@@ -17,6 +17,7 @@ import {
   insertSlashTrigger,
   mergeSlashCommands,
   replaceSlashCommand,
+  resolveSlashUiAction,
 } from '../components/chat/composerUtils'
 import type { AttachmentRef } from '../types/chat'
 import type { SlashCommandOption } from '../components/chat/composerUtils'
@@ -178,8 +179,19 @@ export function EmptySession() {
     const text = input.trim()
     if ((!text && attachments.length === 0) || isSubmitting) return
 
-    if (text === '/mcp' || text === '/skills' || text === '/plugins') {
-      setLocalSlashPanel(text.slice(1) as LocalSlashCommandName)
+    const slashUiAction = text.startsWith('/') ? resolveSlashUiAction(text.slice(1)) : null
+    if (slashUiAction?.type === 'panel') {
+      setLocalSlashPanel(slashUiAction.command as LocalSlashCommandName)
+      setInput('')
+      setSlashMenuOpen(false)
+      setFileSearchOpen(false)
+      setPlusMenuOpen(false)
+      return
+    }
+
+    if (slashUiAction?.type === 'settings') {
+      useUIStore.getState().setPendingSettingsTab(slashUiAction.tab)
+      useTabStore.getState().openTab(SETTINGS_TAB_ID, 'Settings', 'settings')
       setInput('')
       setSlashMenuOpen(false)
       setFileSearchOpen(false)

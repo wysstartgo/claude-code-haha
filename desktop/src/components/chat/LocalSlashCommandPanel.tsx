@@ -9,7 +9,7 @@ import { useSkillStore } from '../../stores/skillStore'
 import type { McpServerRecord } from '../../types/mcp'
 import type { SkillMeta } from '../../types/skill'
 
-export type LocalSlashCommandName = 'mcp' | 'skills' | 'plugins'
+export type LocalSlashCommandName = 'mcp' | 'skills'
 
 type Props = {
   command: LocalSlashCommandName
@@ -243,7 +243,7 @@ function SkillsPanel({ cwd, onClose }: { cwd?: string; onClose: () => void }) {
               type="button"
               key={`${skill.source}:${skill.name}`}
               onClick={async () => {
-                await fetchSkillDetail(skill.source, skill.name, cwd)
+                await fetchSkillDetail(skill.source, skill.name, cwd, 'skills')
                 setPendingSettingsTab('skills')
                 useTabStore.getState().openTab(SETTINGS_TAB_ID, 'Settings', 'settings')
                 onClose()
@@ -265,21 +265,7 @@ function SkillsPanel({ cwd, onClose }: { cwd?: string; onClose: () => void }) {
   )
 }
 
-function PluginsPanel({ onClose }: { onClose: () => void }) {
-  const t = useTranslation()
-  return (
-    <PanelShell
-      title={t('slash.plugins.title')}
-      subtitle={t('slash.plugins.subtitle')}
-      onClose={onClose}
-    >
-      <EmptyState title={t('slash.plugins.emptyTitle')} body={t('slash.plugins.emptyBody')} />
-    </PanelShell>
-  )
-}
-
 export function LocalSlashCommandPanel({ command, cwd, onClose }: Props) {
   if (command === 'mcp') return <McpPanel cwd={cwd} onClose={onClose} />
-  if (command === 'skills') return <SkillsPanel cwd={cwd} onClose={onClose} />
-  return <PluginsPanel onClose={onClose} />
+  return <SkillsPanel cwd={cwd} onClose={onClose} />
 }

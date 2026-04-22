@@ -1,5 +1,6 @@
-import { sep } from 'node:path'
+import { basename, join, sep } from 'node:path'
 import { getBuiltinPluginDefinition } from '../../plugins/builtinPlugins.js'
+import type { McpServerConfig } from '../../services/mcp/types.js'
 import {
   disablePluginOp,
   enablePluginOp,
@@ -25,11 +26,15 @@ import { loadAllPlugins } from '../../utils/plugins/pluginLoader.js'
 import { loadPluginHooks } from '../../utils/plugins/loadPluginHooks.js'
 import { getPluginCommands } from '../../utils/plugins/loadPluginCommands.js'
 import { clearPluginCacheExclusions } from '../../utils/plugins/orphanedPluginFilter.js'
+import { parseFrontmatter } from '../../utils/frontmatterParser.js'
+import { extractDescriptionFromMarkdown } from '../../utils/markdownConfigLoader.js'
 import type {
   PluginInstallationEntry,
   PluginScope,
 } from '../../utils/plugins/schemas.js'
 import { ApiError } from '../middleware/errorHandler.js'
+import { walkPluginMarkdown } from '../../utils/plugins/walkPluginMarkdown.js'
+import type { HookCommand, HooksSettings } from '../../utils/settings/types.js'
 
 export type ApiPluginCapabilitySet = {
   commands: string[]
@@ -57,8 +62,45 @@ export type ApiPluginSummary = {
   errors: string[]
 }
 
+export type ApiPluginSkillEntry = {
+  name: string
+  displayName?: string
+  description: string
+  version?: string
+  pluginName?: string
+}
+
+export type ApiPluginCommandEntry = {
+  name: string
+  description: string
+}
+
+export type ApiPluginAgentEntry = {
+  name: string
+  displayName?: string
+  description: string
+}
+
+export type ApiPluginHookEntry = {
+  event: string
+  matcher?: string
+  actions: string[]
+}
+
+export type ApiPluginMcpServerEntry = {
+  name: string
+  displayName?: string
+  transport: string
+  summary: string
+}
+
 export type ApiPluginDetail = ApiPluginSummary & {
   capabilities: ApiPluginCapabilitySet
+  commandEntries: ApiPluginCommandEntry[]
+  agentEntries: ApiPluginAgentEntry[]
+  hookEntries: ApiPluginHookEntry[]
+  skillEntries: ApiPluginSkillEntry[]
+  mcpServerEntries: ApiPluginMcpServerEntry[]
 }
 
 export type ApiPluginMarketplaceSummary = {
@@ -321,10 +363,22 @@ export class PluginService {
         errors: pluginErrors,
         componentCounts: this.countCapabilities(this.emptyCapabilities()),
         capabilities: this.emptyCapabilities(),
+        commandEntries: [],
+        agentEntries: [],
+        hookEntries: [],
+        skillEntries: [],
+        mcpServerEntries: [],
       }
     }
 
-    const capabilities = await this.collectCapabilities(loaded)
+    const {
+      capabilities,
+      commandEntries,
+      agentEntries,
+      hookEntries,
+      skillEntries,
+      mcpServerEntries,
+    } = await this.collectCapabilities(loaded)
     return {
       id: pluginId,
       name: loaded.name,
@@ -341,41 +395,98 @@ export class PluginService {
       errors: pluginErrors,
       componentCounts: this.countCapabilities(capabilities),
       capabilities,
+      commandEntries,
+      agentEntries,
+      hookEntries,
+      skillEntries,
+      mcpServerEntries,
     }
   }
 
   private async collectCapabilities(
     plugin: LoadedPlugin,
-  ): Promise<ApiPluginCapabilitySet> {
+  ): Promise<{
+    capabilities: ApiPluginCapabilitySet
+    commandEntries: ApiPluginCommandEntry[]
+    agentEntries: ApiPluginAgentEntry[]
+    hookEntries: ApiPluginHookEntry[]
+    skillEntries: ApiPluginSkillEntry[]
+    mcpServerEntries: ApiPluginMcpServerEntry[]
+  }> {
     if (plugin.isBuiltin) {
       const definition = getBuiltinPluginDefinition(plugin.name)
+      const skillEntries = (definition?.skills ?? []).map((skill) => ({
+        name: skill.name,
+        description: skill.description,
+      }))
+      const mcpServerEntries = Object.entries(definition?.mcpServers ?? {}).map(([serverName, config]) => ({
+        name: `plugin:${plugin.name}:${serverName}`,
+        displayName: serverName,
+        transport: this.getPluginMcpTransport(config),
+        summary: this.getPluginMcpSummary(config),
+      }))
+
       return {
-        commands: [],
-        agents: [],
-        skills: definition?.skills?.map((skill) => skill.name) ?? [],
-        hooks: definition?.hooks ? Object.keys(definition.hooks) : [],
-        mcpServers: definition?.mcpServers ? Object.keys(definition.mcpServers) : [],
-        lspServers: [],
+        capabilities: {
+          commands: [],
+          agents: [],
+          skills: skillEntries.map((skill) => skill.name),
+          hooks: definition?.hooks ? Object.keys(definition.hooks) : [],
+          mcpServers: mcpServerEntries.map((server) => server.name),
+          lspServers: [],
+        },
+        commandEntries: [],
+        agentEntries: [],
+        hookEntries: this.collectHookEntries(definition?.hooks),
+        skillEntries,
+        mcpServerEntries,
       }
     }
 
+    const commandEntries = await this.collectCommandEntries(plugin)
+    const agentEntries = await this.collectAgentEntries(plugin)
+    const hookEntries = this.collectHookEntries(plugin.hooksConfig)
+    const skillEntries = await this.collectSkillEntries([
+      plugin.skillsPath,
+      ...(plugin.skillsPaths ?? []),
+    ], plugin.name)
+    const mcpServerEntries = this.collectMcpServerEntries(plugin.name, plugin.mcpServers)
+
     return {
-      commands: await this.collectMarkdownEntries([
-        plugin.commandsPath,
-        ...(plugin.commandsPaths ?? []),
-      ]),
-      agents: await this.collectMarkdownEntries([
-        plugin.agentsPath,
-        ...(plugin.agentsPaths ?? []),
-      ]),
-      skills: await this.collectSkillDirs([
-        plugin.skillsPath,
-        ...(plugin.skillsPaths ?? []),
-      ]),
-      hooks: plugin.hooksConfig ? Object.keys(plugin.hooksConfig) : [],
-      mcpServers: plugin.mcpServers ? Object.keys(plugin.mcpServers) : [],
-      lspServers: plugin.lspServers ? Object.keys(plugin.lspServers) : [],
+      capabilities: {
+        commands: commandEntries.map((command) => command.name),
+        agents: agentEntries.map((agent) => agent.name),
+        skills: skillEntries.map((skill) => skill.name),
+        hooks: [...new Set(hookEntries.map((hook) => hook.event))],
+        mcpServers: mcpServerEntries.map((server) => server.name),
+        lspServers: plugin.lspServers ? Object.keys(plugin.lspServers) : [],
+      },
+      commandEntries,
+      agentEntries,
+      hookEntries,
+      skillEntries,
+      mcpServerEntries,
     }
+  }
+
+  private async collectCommandEntries(
+    plugin: LoadedPlugin,
+  ): Promise<ApiPluginCommandEntry[]> {
+    return this.collectMarkdownEntriesWithDescriptions(
+      plugin.name,
+      [plugin.commandsPath, ...(plugin.commandsPaths ?? [])],
+      { stopAtSkillDir: true, useNamespace: true },
+    )
+  }
+
+  private async collectAgentEntries(
+    plugin: LoadedPlugin,
+  ): Promise<ApiPluginAgentEntry[]> {
+    return this.collectMarkdownEntriesWithDescriptions(
+      plugin.name,
+      [plugin.agentsPath, ...(plugin.agentsPaths ?? [])],
+      { stopAtSkillDir: false, useNamespace: true, preferFrontmatterName: true },
+    )
   }
 
   private async collectMarkdownEntries(paths: Array<string | undefined>): Promise<string[]> {
@@ -386,8 +497,8 @@ export class PluginService {
       if (!dirPath) continue
 
       try {
-        const entries = await fs.readdir(dirPath, { withFileTypes: true })
-        for (const entry of entries) {
+        const dirEntries = await fs.readdir(dirPath, { withFileTypes: true })
+        for (const entry of dirEntries) {
           if (!entry.isFile() || !entry.name.endsWith('.md')) continue
           names.add(entry.name.replace(/\.md$/i, ''))
         }
@@ -399,22 +510,93 @@ export class PluginService {
     return [...names].sort()
   }
 
-  private async collectSkillDirs(paths: Array<string | undefined>): Promise<string[]> {
+  private async collectMarkdownEntriesWithDescriptions(
+    pluginName: string,
+    paths: Array<string | undefined>,
+    options: {
+      stopAtSkillDir: boolean
+      useNamespace: boolean
+      preferFrontmatterName?: boolean
+    },
+  ): Promise<Array<{ name: string; displayName?: string; description: string }>> {
     const fs = await import('node:fs/promises')
-    const names = new Set<string>()
+    const entries = new Map<string, { name: string; displayName?: string; description: string }>()
+
+    for (const rootPath of paths) {
+      if (!rootPath) continue
+
+      await walkPluginMarkdown(
+        rootPath,
+        async (fullPath, namespace) => {
+          const raw = await fs.readFile(fullPath, 'utf-8')
+          const parsed = parseFrontmatter(raw, fullPath)
+          const baseName = basename(fullPath).replace(/\.md$/i, '')
+          const resolvedLeafName =
+            options.preferFrontmatterName &&
+            typeof parsed.frontmatter.name === 'string' &&
+            parsed.frontmatter.name.trim().length > 0
+              ? parsed.frontmatter.name.trim()
+              : /^skill$/i.test(baseName)
+                ? basename(join(fullPath, '..'))
+                : baseName
+          const leafName = resolvedLeafName
+          const name = options.useNamespace && namespace.length > 0
+            ? `${pluginName}:${namespace.join(':')}:${leafName}`
+            : options.useNamespace
+              ? `${pluginName}:${leafName}`
+              : leafName
+          const description =
+            (typeof parsed.frontmatter.description === 'string' && parsed.frontmatter.description.trim()) ||
+            (typeof parsed.frontmatter['when-to-use'] === 'string' && parsed.frontmatter['when-to-use'].trim()) ||
+            extractDescriptionFromMarkdown(parsed.content, 'No description')
+
+          if (!entries.has(name)) {
+            entries.set(name, {
+              name,
+              displayName: leafName !== name ? leafName : undefined,
+              description,
+            })
+          }
+        },
+        {
+          stopAtSkillDir: options.stopAtSkillDir,
+          logLabel: options.useNamespace ? 'plugin-details' : 'markdown',
+        },
+      )
+    }
+
+    return [...entries.values()].sort((a, b) => a.name.localeCompare(b.name))
+  }
+
+  private async collectSkillEntries(
+    paths: Array<string | undefined>,
+    pluginName: string,
+  ): Promise<ApiPluginSkillEntry[]> {
+    const fs = await import('node:fs/promises')
+    const skillEntriesByName = new Map<string, ApiPluginSkillEntry>()
 
     for (const dirPath of paths) {
       if (!dirPath) continue
 
       try {
-        const entries = await fs.readdir(dirPath, { withFileTypes: true })
-        for (const entry of entries) {
+        const directSkill = await this.readPluginSkillEntry(dirPath, pluginName)
+        if (directSkill && !skillEntriesByName.has(directSkill.name)) {
+          skillEntriesByName.set(directSkill.name, directSkill)
+          continue
+        }
+      } catch {
+        // Fall back to scanning as a skill root.
+      }
+
+      try {
+        const dirEntries = await fs.readdir(dirPath, { withFileTypes: true })
+        for (const entry of dirEntries) {
           if (!entry.isDirectory() && !entry.isSymbolicLink()) continue
 
           try {
-            const stat = await fs.stat(`${dirPath}/${entry.name}/SKILL.md`)
-            if (stat.isFile()) {
-              names.add(entry.name)
+            const skillEntry = await this.readPluginSkillEntry(join(dirPath, entry.name), pluginName)
+            if (skillEntry && !skillEntriesByName.has(skillEntry.name)) {
+              skillEntriesByName.set(skillEntry.name, skillEntry)
             }
           } catch {
             // Ignore non-skill directories.
@@ -425,7 +607,111 @@ export class PluginService {
       }
     }
 
-    return [...names].sort()
+    return [...skillEntriesByName.values()].sort((a, b) => a.name.localeCompare(b.name))
+  }
+
+  private async readPluginSkillEntry(
+    skillDir: string,
+    pluginName: string,
+  ): Promise<ApiPluginSkillEntry | null> {
+    const fs = await import('node:fs/promises')
+    const skillFile = join(skillDir, 'SKILL.md')
+    try {
+      const stat = await fs.stat(skillFile)
+      if (!stat.isFile()) return null
+
+      const raw = await fs.readFile(skillFile, 'utf-8')
+      const parsed = parseFrontmatter(raw, skillFile)
+      const body = parsed.content
+      const name = typeof parsed.frontmatter.name === 'string' && parsed.frontmatter.name.trim().length > 0
+        ? parsed.frontmatter.name.trim()
+        : basename(skillDir)
+
+      const description =
+        (typeof parsed.frontmatter.description === 'string' && parsed.frontmatter.description.trim()) ||
+        body
+          .split('\n')
+          .find((line) => line.trim().length > 0)
+          ?.trim() ||
+        'No description'
+
+      return {
+        name: `${pluginName}:${basename(skillDir)}`,
+        displayName: name !== basename(skillDir) ? name : undefined,
+        description,
+        version: parsed.frontmatter.version != null ? String(parsed.frontmatter.version) : undefined,
+        pluginName,
+      }
+    } catch {
+      return null
+    }
+  }
+
+  private collectMcpServerEntries(
+    pluginName: string,
+    servers?: Record<string, McpServerConfig>,
+  ): ApiPluginMcpServerEntry[] {
+    return Object.entries(servers ?? {})
+      .map(([name, config]) => ({
+        name: `plugin:${pluginName}:${name}`,
+        displayName: name,
+        transport: this.getPluginMcpTransport(config),
+        summary: this.getPluginMcpSummary(config),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }
+
+  private collectHookEntries(hooks?: HooksSettings): ApiPluginHookEntry[] {
+    const entries: ApiPluginHookEntry[] = []
+    for (const [event, matchers] of Object.entries(hooks ?? {})) {
+      for (const matcher of matchers ?? []) {
+        entries.push({
+          event,
+          matcher: matcher.matcher,
+          actions: matcher.hooks.map((hook) => this.describeHookAction(hook)),
+        })
+      }
+    }
+
+    return entries.sort((a, b) => {
+      if (a.event !== b.event) return a.event.localeCompare(b.event)
+      return (a.matcher ?? '').localeCompare(b.matcher ?? '')
+    })
+  }
+
+  private describeHookAction(hook: HookCommand): string {
+    switch (hook.type) {
+      case 'command':
+        return hook.command
+      case 'prompt':
+        return hook.prompt
+      case 'agent':
+        return hook.prompt
+      case 'http':
+        return hook.url
+      default:
+        return hook.type
+    }
+  }
+
+  private getPluginMcpTransport(config: McpServerConfig): string {
+    return config.type ?? 'stdio'
+  }
+
+  private getPluginMcpSummary(config: McpServerConfig): string {
+    if (!config.type || config.type === 'stdio') {
+      const stdioConfig = config as McpServerConfig & {
+        command?: string
+        args?: string[]
+      }
+      return [stdioConfig.command, ...(stdioConfig.args ?? [])].filter(Boolean).join(' ').trim()
+    }
+
+    if ('url' in config && typeof config.url === 'string') {
+      return config.url
+    }
+
+    return config.type
   }
 
   private getErrorsForPlugin(

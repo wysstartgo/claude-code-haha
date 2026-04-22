@@ -802,6 +802,7 @@ function AgentsSettings() {
     isLoading,
     error,
     selectedAgent,
+    selectedAgentReturnTab,
     fetchAgents,
     selectAgent,
   } = useAgentStore()
@@ -826,10 +827,18 @@ function AgentsSettings() {
 
   const sourceCount = AGENT_SOURCE_ORDER.filter((source) => (groupedAgents[source] ?? []).length > 0).length
 
+  const handleAgentBack = () => {
+    const returnTab = selectedAgentReturnTab
+    selectAgent(null)
+    if (returnTab === 'plugins') {
+      useUIStore.getState().setPendingSettingsTab('plugins')
+    }
+  }
+
   if (selectedAgent) {
     return (
       <div className="w-full min-w-0">
-        <AgentDetailView agent={selectedAgent} onBack={() => selectAgent(null)} />
+        <AgentDetailView agent={selectedAgent} onBack={handleAgentBack} />
       </div>
     )
   }
@@ -938,7 +947,7 @@ function AgentsSettings() {
                     {group.map((agent) => (
                       <button
                         key={`${agent.source}-${agent.agentType}`}
-                        onClick={() => selectAgent(agent)}
+                        onClick={() => selectAgent(agent, 'agents')}
                         className="group rounded-xl border border-transparent px-3 py-3 text-left transition-all hover:border-[var(--color-border-focus)] hover:bg-[var(--color-surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-surface)]"
                       >
                         <div className="flex items-start gap-3">

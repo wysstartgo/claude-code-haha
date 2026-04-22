@@ -1,17 +1,16 @@
-import { useState, type ReactNode } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { usePluginStore } from '../../stores/pluginStore'
 import { useSessionStore } from '../../stores/sessionStore'
 import { useTranslation } from '../../i18n'
 import { useUIStore } from '../../stores/uiStore'
 import { Button } from '../shared/Button'
 import type { PluginCapabilityKey } from '../../types/plugin'
+import { SETTINGS_TAB_ID, useTabStore } from '../../stores/tabStore'
+import { useSkillStore } from '../../stores/skillStore'
+import { useAgentStore } from '../../stores/agentStore'
+import { useMcpStore } from '../../stores/mcpStore'
 
 const CAPABILITY_ORDER: PluginCapabilityKey[] = [
-  'skills',
-  'commands',
-  'agents',
-  'hooks',
-  'mcpServers',
   'lspServers',
 ]
 
@@ -30,6 +29,11 @@ export function PluginDetail() {
   const sessions = useSessionStore((s) => s.sessions)
   const activeSessionId = useSessionStore((s) => s.activeSessionId)
   const addToast = useUIStore((s) => s.addToast)
+  const fetchSkillDetail = useSkillStore((s) => s.fetchSkillDetail)
+  const fetchAgents = useAgentStore((s) => s.fetchAgents)
+  const selectAgent = useAgentStore((s) => s.selectAgent)
+  const fetchServers = useMcpStore((s) => s.fetchServers)
+  const selectServer = useMcpStore((s) => s.selectServer)
   const t = useTranslation()
   const [actionKey, setActionKey] = useState<string | null>(null)
 
@@ -47,6 +51,15 @@ export function PluginDetail() {
   if (!selectedPlugin) return null
 
   const canMutate = selectedPlugin.scope !== 'managed' && selectedPlugin.scope !== 'builtin'
+  const canNavigateSharedCapabilities = selectedPlugin.enabled
+  const otherCapabilityItems = useMemo(
+    () =>
+      CAPABILITY_ORDER.map((key) => ({
+        key,
+        items: selectedPlugin.capabilities[key],
+      })),
+    [selectedPlugin],
+  )
 
   const runAction = async (key: string, fn: () => Promise<string>) => {
     setActionKey(key)
@@ -88,6 +101,76 @@ export function PluginDetail() {
   const confirmUninstall = () => {
     const label = t('settings.plugins.confirmUninstall', { name: selectedPlugin.name })
     return window.confirm(label)
+  }
+
+  const openSettingsTab = (tab: 'skills' | 'agents' | 'mcp') => {
+    useUIStore.getState().setPendingSettingsTab(tab)
+    useTabStore.getState().openTab(SETTINGS_TAB_ID, 'Settings', 'settings')
+  }
+
+  const handleOpenSkill = async (skillName: string) => {
+    if (!canNavigateSharedCapabilities) {
+      addToast({
+        type: 'warning',
+        message: t('settings.plugins.sharedNavigationDisabled'),
+      })
+      return
+    }
+    openSettingsTab('skills')
+    await fetchSkillDetail('plugin', skillName, currentWorkDir, 'plugins')
+
+    const { selectedSkill, error } = useSkillStore.getState()
+    if (!selectedSkill && error) {
+      addToast({ type: 'error', message: error })
+    }
+  }
+
+  const handleOpenAgent = async (agentType: string) => {
+    if (!canNavigateSharedCapabilities) {
+      addToast({
+        type: 'warning',
+        message: t('settings.plugins.sharedNavigationDisabled'),
+      })
+      return
+    }
+    openSettingsTab('agents')
+    await fetchAgents(currentWorkDir)
+
+    const state = useAgentStore.getState()
+    const agent = state.allAgents.find((entry) => entry.agentType === agentType)
+    if (!agent) {
+      addToast({
+        type: 'error',
+        message: `Unable to locate agent: ${agentType}`,
+      })
+      return
+    }
+
+    selectAgent(agent, 'plugins')
+  }
+
+  const handleOpenMcpServer = async (serverName: string) => {
+    if (!canNavigateSharedCapabilities) {
+      addToast({
+        type: 'warning',
+        message: t('settings.plugins.sharedNavigationDisabled'),
+      })
+      return
+    }
+    openSettingsTab('mcp')
+    await fetchServers(undefined, currentWorkDir)
+
+    const state = useMcpStore.getState()
+    const server = state.servers.find((entry) => entry.name === serverName)
+    if (!server) {
+      addToast({
+        type: 'error',
+        message: `Unable to locate MCP server: ${serverName}`,
+      })
+      return
+    }
+
+    selectServer(server)
   }
 
   return (
@@ -261,10 +344,112 @@ export function PluginDetail() {
             {t('settings.plugins.capabilitiesHint')}
           </p>
         </div>
-        <div className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-3">
-          {CAPABILITY_ORDER.map((key) => {
-            const items = selectedPlugin.capabilities[key]
-            return (
+        <div className="flex flex-col gap-4 p-4">
+          <CapabilityPreviewSection
+            title={t('settings.plugins.capabilityLabel.skills')}
+            count={selectedPlugin.skillEntries.length}
+            emptyLabel={t('settings.plugins.capabilityEmpty')}
+            hint={!canNavigateSharedCapabilities ? t('settings.plugins.sharedNavigationDisabled') : undefined}
+          >
+            {selectedPlugin.skillEntries.length > 0 ? (
+              <div className="grid gap-3 xl:grid-cols-2">
+                {selectedPlugin.skillEntries.map((skill) => (
+                  <SkillPreviewCard
+                    key={skill.name}
+                    name={skill.displayName || skill.name}
+                    rawName={skill.displayName ? skill.name : undefined}
+                    description={skill.description}
+                    version={skill.version}
+                    onClick={() => void handleOpenSkill(skill.name)}
+                    disabled={!canNavigateSharedCapabilities}
+                  />
+                ))}
+              </div>
+            ) : null}
+          </CapabilityPreviewSection>
+
+          <CapabilityPreviewSection
+            title={t('settings.plugins.capabilityLabel.mcpServers')}
+            count={selectedPlugin.mcpServerEntries.length}
+            emptyLabel={t('settings.plugins.capabilityEmpty')}
+            hint={!canNavigateSharedCapabilities ? t('settings.plugins.sharedNavigationDisabled') : undefined}
+          >
+            {selectedPlugin.mcpServerEntries.length > 0 ? (
+              <div className="grid gap-3 xl:grid-cols-2">
+                {selectedPlugin.mcpServerEntries.map((server) => (
+                  <McpPreviewCard
+                    key={server.name}
+                    name={server.displayName || server.name}
+                    transport={server.transport}
+                    summary={server.summary}
+                    onClick={() => void handleOpenMcpServer(server.name)}
+                    disabled={!canNavigateSharedCapabilities}
+                  />
+                ))}
+              </div>
+            ) : null}
+          </CapabilityPreviewSection>
+
+          <CapabilityPreviewSection
+            title={t('settings.plugins.capabilityLabel.commands')}
+            count={selectedPlugin.commandEntries.length}
+            emptyLabel={t('settings.plugins.capabilityEmpty')}
+          >
+            {selectedPlugin.commandEntries.length > 0 ? (
+              <div className="grid gap-3 xl:grid-cols-2">
+                {selectedPlugin.commandEntries.map((command) => (
+                  <CommandPreviewCard
+                    key={command.name}
+                    name={command.name}
+                    description={command.description}
+                  />
+                ))}
+              </div>
+            ) : null}
+          </CapabilityPreviewSection>
+
+          <CapabilityPreviewSection
+            title={t('settings.plugins.capabilityLabel.agents')}
+            count={selectedPlugin.agentEntries.length}
+            emptyLabel={t('settings.plugins.capabilityEmpty')}
+            hint={!canNavigateSharedCapabilities ? t('settings.plugins.sharedNavigationDisabled') : undefined}
+          >
+            {selectedPlugin.agentEntries.length > 0 ? (
+              <div className="grid gap-3 xl:grid-cols-2">
+                {selectedPlugin.agentEntries.map((agent) => (
+                  <AgentPreviewCard
+                    key={agent.name}
+                    name={agent.displayName || agent.name}
+                    description={agent.description}
+                    onClick={() => void handleOpenAgent(agent.name)}
+                    disabled={!canNavigateSharedCapabilities}
+                  />
+                ))}
+              </div>
+            ) : null}
+          </CapabilityPreviewSection>
+
+          <CapabilityPreviewSection
+            title={t('settings.plugins.capabilityLabel.hooks')}
+            count={selectedPlugin.hookEntries.length}
+            emptyLabel={t('settings.plugins.capabilityEmpty')}
+          >
+            {selectedPlugin.hookEntries.length > 0 ? (
+              <div className="grid gap-3 xl:grid-cols-2">
+                {selectedPlugin.hookEntries.map((hook, index) => (
+                  <HookPreviewCard
+                    key={`${hook.event}:${hook.matcher || 'all'}:${index}`}
+                    event={hook.event}
+                    matcher={hook.matcher}
+                    actions={hook.actions}
+                  />
+                ))}
+              </div>
+            ) : null}
+          </CapabilityPreviewSection>
+
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {otherCapabilityItems.map(({ key, items }) => (
               <div
                 key={key}
                 className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-container-low)] px-4 py-3"
@@ -294,10 +479,205 @@ export function PluginDetail() {
                   </div>
                 )}
               </div>
-            )
-          })}
+            ))}
+          </div>
         </div>
       </section>
+    </div>
+  )
+}
+
+function CapabilityPreviewSection({
+  title,
+  count,
+  children,
+  emptyLabel,
+  hint,
+}: {
+  title: string
+  count: number
+  children: ReactNode
+  emptyLabel: string
+  hint?: string
+}) {
+  return (
+    <section className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-container-low)] overflow-hidden">
+      <div className="flex items-center justify-between gap-3 border-b border-[var(--color-border)] px-4 py-3">
+        <div className="text-sm font-semibold text-[var(--color-text-primary)]">{title}</div>
+        <div className="text-[11px] text-[var(--color-text-tertiary)]">{count}</div>
+      </div>
+      <div className="p-4">
+        {hint && count > 0 && (
+          <div className="mb-3 text-xs text-[var(--color-text-tertiary)]">{hint}</div>
+        )}
+        {count > 0 ? children : (
+          <div className="text-xs text-[var(--color-text-tertiary)]">{emptyLabel}</div>
+        )}
+      </div>
+    </section>
+  )
+}
+
+function SkillPreviewCard({
+  name,
+  rawName,
+  description,
+  version,
+  onClick,
+  disabled,
+}: {
+  name: string
+  rawName?: string
+  description: string
+  version?: string
+  onClick: () => void
+  disabled?: boolean
+}) {
+  const t = useTranslation()
+  const slashName = rawName || name
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="group rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 text-left transition-colors hover:border-[var(--color-border-focus)] hover:bg-[var(--color-surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)] disabled:cursor-default disabled:opacity-70 disabled:hover:border-[var(--color-border)] disabled:hover:bg-[var(--color-surface)]"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 flex-wrap min-w-0">
+          <span className="text-sm font-semibold text-[var(--color-text-primary)] break-all">{name}</span>
+          {version && (
+            <span className="rounded-full bg-[var(--color-surface-container-high)] px-2 py-0.5 text-[10px] font-medium text-[var(--color-text-tertiary)]">
+              v{version}
+            </span>
+          )}
+          <span className="rounded-full border border-[var(--color-border)] px-2 py-0.5 text-[10px] font-medium text-[var(--color-text-tertiary)]">
+            {t('settings.skills.slashCommand')}
+          </span>
+        </div>
+        <span className="material-symbols-outlined text-[18px] text-[var(--color-text-tertiary)] transition-transform group-hover:translate-x-0.5">
+          chevron_right
+        </span>
+      </div>
+      <div className="mt-1 text-[11px] text-[var(--color-text-tertiary)] break-all">/{slashName}</div>
+      <div className="mt-2 text-xs leading-5 text-[var(--color-text-secondary)] break-words">{description}</div>
+    </button>
+  )
+}
+
+function CommandPreviewCard({
+  name,
+  description,
+}: {
+  name: string
+  description: string
+}) {
+  return (
+    <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3">
+      <div className="text-sm font-semibold text-[var(--color-text-primary)] break-all">/{name}</div>
+      <div className="mt-2 text-xs leading-5 text-[var(--color-text-secondary)] break-words">{description}</div>
+    </div>
+  )
+}
+
+function AgentPreviewCard({
+  name,
+  description,
+  onClick,
+  disabled,
+}: {
+  name: string
+  description: string
+  onClick: () => void
+  disabled?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="group rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 text-left transition-colors hover:border-[var(--color-border-focus)] hover:bg-[var(--color-surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)] disabled:cursor-default disabled:opacity-70 disabled:hover:border-[var(--color-border)] disabled:hover:bg-[var(--color-surface)]"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-sm font-semibold text-[var(--color-text-primary)] break-all">{name}</div>
+          <div className="mt-2 text-xs leading-5 text-[var(--color-text-secondary)] break-words">{description}</div>
+        </div>
+        <span className="material-symbols-outlined text-[18px] text-[var(--color-text-tertiary)] transition-transform group-hover:translate-x-0.5">
+          chevron_right
+        </span>
+      </div>
+    </button>
+  )
+}
+
+function McpPreviewCard({
+  name,
+  transport,
+  summary,
+  onClick,
+  disabled,
+}: {
+  name: string
+  transport: string
+  summary: string
+  onClick: () => void
+  disabled?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="group rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 text-left transition-colors hover:border-[var(--color-border-focus)] hover:bg-[var(--color-surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)] disabled:cursor-default disabled:opacity-70 disabled:hover:border-[var(--color-border)] disabled:hover:bg-[var(--color-surface)]"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-semibold text-[var(--color-text-primary)] break-all">{name}</span>
+            <span className="rounded-full bg-[var(--color-surface-container-high)] px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--color-text-tertiary)]">
+              {transport}
+            </span>
+          </div>
+          <div className="mt-2 text-xs leading-5 text-[var(--color-text-secondary)] break-all">{summary}</div>
+        </div>
+        <span className="material-symbols-outlined text-[18px] text-[var(--color-text-tertiary)] transition-transform group-hover:translate-x-0.5">
+          chevron_right
+        </span>
+      </div>
+    </button>
+  )
+}
+
+function HookPreviewCard({
+  event,
+  matcher,
+  actions,
+}: {
+  event: string
+  matcher?: string
+  actions: string[]
+}) {
+  return (
+    <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-sm font-semibold text-[var(--color-text-primary)] break-all">{event}</span>
+        {matcher && (
+          <span className="rounded-full bg-[var(--color-surface-container-high)] px-2 py-0.5 text-[10px] font-medium text-[var(--color-text-tertiary)] break-all">
+            {matcher}
+          </span>
+        )}
+      </div>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {actions.map((action) => (
+          <span
+            key={action}
+            className="rounded-full border border-[var(--color-border)] bg-[var(--color-surface-container-low)] px-2.5 py-1 text-[11px] text-[var(--color-text-secondary)] break-all"
+          >
+            {action}
+          </span>
+        ))}
+      </div>
     </div>
   )
 }

@@ -55,7 +55,7 @@ describe('McpSettings', () => {
 
     render(<McpSettings />)
 
-    expect(fetchServers).toHaveBeenCalledWith(undefined, undefined)
+    expect(fetchServers).toHaveBeenCalledWith(undefined, '/workspace/project')
   })
 
   it('renders the empty state and add button', () => {
@@ -66,24 +66,23 @@ describe('McpSettings', () => {
     expect(screen.getByRole('button', { name: /add server/i })).toBeInTheDocument()
   })
 
-  it('shows only global MCP servers on the homepage', () => {
+  it('shows plugin and user MCP servers in grouped sections', () => {
     useMcpStore.setState({
       servers: [
         {
-          name: 'project-private',
-          scope: 'local',
-          projectPath: '/workspace/project',
+          name: 'plugin:telegram:telegram',
+          scope: 'dynamic',
           transport: 'stdio',
           enabled: true,
           status: 'connected',
           statusLabel: 'Connected',
           configLocation: '/tmp/config',
-          summary: 'npx demo',
-          canEdit: true,
-          canRemove: true,
+          summary: 'npx @telegram/mcp',
+          canEdit: false,
+          canRemove: false,
           canReconnect: true,
           canToggle: true,
-          config: { type: 'stdio', command: 'npx', args: ['demo'], env: {} },
+          config: { type: 'stdio', command: 'npx', args: ['@telegram/mcp'], env: {} },
         },
         {
           name: 'global-user',
@@ -105,8 +104,9 @@ describe('McpSettings', () => {
 
     render(<McpSettings />)
 
-    expect(screen.queryByText('project-private')).not.toBeInTheDocument()
+    expect(screen.getAllByText('Plugin').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('User').length).toBeGreaterThan(0)
+    expect(screen.getByText('plugin:telegram:telegram')).toBeInTheDocument()
     expect(screen.getByText('global-user')).toBeInTheDocument()
-    expect(screen.getByText('This page manages only user-global MCP servers for speed. Project-specific MCP will move into the chat slash-command experience.')).toBeInTheDocument()
   })
 })

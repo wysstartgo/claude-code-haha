@@ -8,6 +8,7 @@ import { useSkillStore } from '../stores/skillStore'
 import { useSettingsStore } from '../stores/settingsStore'
 import { useSessionStore } from '../stores/sessionStore'
 import { SETTINGS_TAB_ID, useTabStore } from '../stores/tabStore'
+import { useUIStore } from '../stores/uiStore'
 
 vi.mock('../api/agents', () => ({
   agentsApi: {
@@ -79,6 +80,18 @@ const MOCK_AGENTS = [
     isActive: false,
     overriddenBy: 'userSettings' as const,
   },
+  {
+    agentType: 'telegram:pairing',
+    description: 'Plugin agent for Telegram pairing flows',
+    model: 'inherit',
+    modelDisplay: 'inherit',
+    tools: ['Read'],
+    systemPrompt: 'Pair Telegram access for the current workspace.',
+    color: 'cyan',
+    source: 'plugin' as const,
+    baseDir: '/Users/test/.claude/plugins/cache/telegram',
+    isActive: true,
+  },
 ]
 
 const MOCK_SKILL_DETAIL = {
@@ -132,6 +145,7 @@ describe('Settings > Agents tab', () => {
       activeTabId: 'session-1',
       tabs: [{ sessionId: 'session-1', title: 'Test', type: 'session', status: 'idle' }],
     })
+    useUIStore.setState({ pendingSettingsTab: null })
     useSessionStore.setState({
       sessions: [
         {
@@ -164,6 +178,7 @@ describe('Settings > Agents tab', () => {
       isLoading: false,
       error: null,
       selectedAgent: null,
+      selectedAgentReturnTab: 'agents',
       fetchAgents: noopFetch,
       selectAgent: (agent) => useAgentStore.setState({ selectedAgent: agent }),
     })
@@ -236,8 +251,10 @@ describe('Settings > Agents tab', () => {
     expect(screen.getAllByText('User').length).toBeGreaterThan(0)
     expect(screen.getAllByText('Built-in').length).toBeGreaterThan(0)
     expect(screen.getAllByText('Project').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Plugin').length).toBeGreaterThan(0)
     expect(screen.getByText('code-reviewer')).toBeInTheDocument()
     expect(screen.getByText('Writes technical documentation')).toBeInTheDocument()
+    expect(screen.getByText('telegram:pairing')).toBeInTheDocument()
     expect(screen.getByText('Overridden by User')).toBeInTheDocument()
   })
 
@@ -295,6 +312,29 @@ describe('Settings > Agents tab', () => {
     expect(screen.getByText('code-reviewer')).toBeInTheDocument()
     expect(screen.getByText('doc-writer')).toBeInTheDocument()
     expect(screen.getByText('plain-agent')).toBeInTheDocument()
+  })
+
+  it('returns to plugins tab when agent detail was opened from plugins', () => {
+    useAgentStore.setState({
+      allAgents: MOCK_AGENTS,
+      activeAgents: MOCK_AGENTS.filter((agent) => agent.isActive),
+      isLoading: false,
+      selectedAgent: MOCK_AGENTS[0],
+      selectedAgentReturnTab: 'plugins',
+      fetchAgents: noopFetch,
+      selectAgent: (agent) =>
+        useAgentStore.setState({
+          selectedAgent: agent,
+          selectedAgentReturnTab: agent ? 'plugins' : 'agents',
+        }),
+    })
+
+    render(<Settings />)
+    switchToAgentsTab()
+
+    fireEvent.click(screen.getByText('Back to list'))
+
+    expect(screen.getByText('Installed Plugins')).toBeInTheDocument()
   })
 })
 
