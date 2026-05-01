@@ -7,7 +7,10 @@
  */
 
 import { ProviderService } from './providerService.js'
+import { SettingsService } from './settingsService.js'
 import { sessionService } from './sessionService.js'
+import { PROVIDER_PRESETS } from '../config/providerPresets.js'
+import { isEnvTruthy } from '../../utils/envUtils.js'
 
 const TITLE_MAX_LEN = 50
 
@@ -69,6 +72,7 @@ export async function generateTitle(
 
     const model = resolvedProvider.models.haiku || resolvedProvider.models.main
     const url = `${resolvedProvider.baseUrl.replace(/\/+$/, '')}/v1/messages`
+    const shouldDisableThinking = await shouldDisableThinkingForTitle(resolvedProvider.presetId)
 
     const response = await fetch(url, {
       method: 'POST',
@@ -82,6 +86,7 @@ export async function generateTitle(
         max_tokens: 100,
         system: TITLE_SYSTEM_PROMPT,
         messages: [{ role: 'user', content: trimmed.slice(0, 2000) }],
+        ...(shouldDisableThinking && { thinking: { type: 'disabled' } }),
       }),
       signal: AbortSignal.timeout(15_000),
     })
@@ -106,6 +111,14 @@ export async function generateTitle(
   } catch {
     return null
   }
+}
+
+async function shouldDisableThinkingForTitle(presetId: string): Promise<boolean> {
+  const settings = await new SettingsService().getUserSettings()
+  if (settings.alwaysThinkingEnabled !== false) return false
+
+  const presetEnv = PROVIDER_PRESETS.find((preset) => preset.id === presetId)?.defaultEnv
+  return isEnvTruthy(presetEnv?.CC_HAHA_SEND_DISABLED_THINKING)
 }
 
 /**

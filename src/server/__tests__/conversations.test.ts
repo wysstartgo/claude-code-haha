@@ -138,6 +138,22 @@ describe('ConversationService', () => {
     ])
   })
 
+  it('should pass disabled thinking to the CLI runtime args', () => {
+    const svc = new ConversationService()
+    expect((svc as any).getRuntimeArgs({
+      model: 'deepseek-v4-pro',
+      effort: 'medium',
+      thinking: 'disabled',
+    })).toEqual([
+      '--model',
+      'deepseek-v4-pro',
+      '--effort',
+      'medium',
+      '--thinking',
+      'disabled',
+    ])
+  })
+
   it('should return false when sending interrupt to non-existent session', () => {
     const svc = new ConversationService()
     const result = svc.sendInterrupt('no-such-session')
@@ -632,6 +648,41 @@ describe('WebSocket Chat Integration', () => {
     expect(statusMsgs[0].state).toBe('thinking')
   })
 
+  it('should start desktop sessions with disabled thinking when configured', async () => {
+    const sessionId = `chat-thinking-disabled-${crypto.randomUUID()}`
+    const originalStartSession = conversationService.startSession.bind(conversationService)
+    const startOptions: Array<{ thinking?: string; model?: string }> = []
+
+    conversationService.startSession = (async function patchedStartSession(
+      sid: string,
+      workDir: string,
+      sdkUrl: string,
+      options?: { permissionMode?: string; model?: string; effort?: string; thinking?: 'enabled' | 'adaptive' | 'disabled'; providerId?: string | null },
+    ) {
+      if (sid === sessionId) {
+        startOptions.push({ thinking: options?.thinking, model: options?.model })
+      }
+      return originalStartSession(sid, workDir, sdkUrl, options)
+    }) as typeof conversationService.startSession
+
+    try {
+      await fs.writeFile(
+        path.join(tmpDir, 'settings.json'),
+        JSON.stringify({ alwaysThinkingEnabled: false }, null, 2),
+        'utf-8',
+      )
+
+      const messages = await runTurn(sessionId, 'Hello without thinking')
+
+      expect(messages.some((m) => m.type === 'message_complete')).toBe(true)
+      expect(startOptions).toEqual([{ thinking: 'disabled', model: undefined }])
+    } finally {
+      conversationService.startSession = originalStartSession as typeof conversationService.startSession
+      conversationService.stopSession(sessionId)
+      await fs.writeFile(path.join(tmpDir, 'settings.json'), '{}\n', 'utf-8')
+    }
+  })
+
   it('should continue chat when SDK init arrives only after the first user turn', async () => {
     const messages = await withMockInitMode('on_first_user', () =>
       runTurn('chat-test-lazy-init', 'Hello after lazy init'),
@@ -901,7 +952,7 @@ describe('WebSocket Chat Integration', () => {
       sid: string,
       workDir: string,
       sdkUrl: string,
-      options?: { permissionMode?: string; model?: string; effort?: string; providerId?: string | null },
+      options?: { permissionMode?: string; model?: string; effort?: string; thinking?: 'enabled' | 'adaptive' | 'disabled'; providerId?: string | null },
     ) {
       startCalls.push({ sessionId: sid })
       return originalStartSession(sid, workDir, sdkUrl, options)
@@ -1037,7 +1088,7 @@ describe('WebSocket Chat Integration', () => {
       sid: string,
       workDir: string,
       sdkUrl: string,
-      options?: { permissionMode?: string; model?: string; effort?: string; providerId?: string | null },
+      options?: { permissionMode?: string; model?: string; effort?: string; thinking?: 'enabled' | 'adaptive' | 'disabled'; providerId?: string | null },
     ) {
       startCalls.push({ sessionId: sid, options })
       return originalStartSession(sid, workDir, sdkUrl, options)
@@ -1102,7 +1153,7 @@ describe('WebSocket Chat Integration', () => {
       sid: string,
       workDir: string,
       sdkUrl: string,
-      options?: { permissionMode?: string; model?: string; effort?: string; providerId?: string | null },
+      options?: { permissionMode?: string; model?: string; effort?: string; thinking?: 'enabled' | 'adaptive' | 'disabled'; providerId?: string | null },
     ) {
       startCalls.push({ sessionId: sid, options })
       if (startCalls.length === 1) {
@@ -1205,7 +1256,7 @@ describe('WebSocket Chat Integration', () => {
       sid: string,
       workDir: string,
       sdkUrl: string,
-      options?: { permissionMode?: string; model?: string; effort?: string; providerId?: string | null },
+      options?: { permissionMode?: string; model?: string; effort?: string; thinking?: 'enabled' | 'adaptive' | 'disabled'; providerId?: string | null },
     ) {
       startCalls.push({ sessionId: sid, options })
       return originalStartSession(sid, workDir, sdkUrl, options)
@@ -1386,7 +1437,7 @@ describe('WebSocket Chat Integration', () => {
       sid: string,
       workDir: string,
       sdkUrl: string,
-      options?: { permissionMode?: string; model?: string; effort?: string; providerId?: string | null },
+      options?: { permissionMode?: string; model?: string; effort?: string; thinking?: 'enabled' | 'adaptive' | 'disabled'; providerId?: string | null },
     ) {
       startCalls.push({ sessionId: sid, options })
       return originalStartSession(sid, workDir, sdkUrl, options)
@@ -1532,7 +1583,7 @@ describe('WebSocket Chat Integration', () => {
       sid: string,
       workDir: string,
       sdkUrl: string,
-      options?: { permissionMode?: string; model?: string; effort?: string; providerId?: string | null },
+      options?: { permissionMode?: string; model?: string; effort?: string; thinking?: 'enabled' | 'adaptive' | 'disabled'; providerId?: string | null },
     ) {
       startCalls.push({ sessionId: sid, options })
       return originalStartSession(sid, workDir, sdkUrl, options)

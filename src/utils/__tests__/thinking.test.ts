@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { get3PModelCapabilityOverride } from '../model/modelSupportOverrides.js'
-import { modelSupportsAdaptiveThinking, modelSupportsThinking } from '../thinking.js'
+import { resolveSideQueryThinkingConfig } from '../sideQuery.js'
+import {
+  modelSupportsAdaptiveThinking,
+  modelSupportsThinking,
+  shouldSendExplicitDisabledThinking,
+} from '../thinking.js'
 
 describe('provider-aware thinking support', () => {
   let originalBaseUrl: string | undefined
@@ -9,6 +14,7 @@ describe('provider-aware thinking support', () => {
   let originalBedrock: string | undefined
   let originalVertex: string | undefined
   let originalFoundry: string | undefined
+  let originalExplicitDisabledThinking: string | undefined
 
   beforeEach(() => {
     originalBaseUrl = process.env.ANTHROPIC_BASE_URL
@@ -17,6 +23,7 @@ describe('provider-aware thinking support', () => {
     originalBedrock = process.env.CLAUDE_CODE_USE_BEDROCK
     originalVertex = process.env.CLAUDE_CODE_USE_VERTEX
     originalFoundry = process.env.CLAUDE_CODE_USE_FOUNDRY
+    originalExplicitDisabledThinking = process.env.CC_HAHA_SEND_DISABLED_THINKING
 
     delete process.env.CLAUDE_CODE_USE_BEDROCK
     delete process.env.CLAUDE_CODE_USE_VERTEX
@@ -30,6 +37,7 @@ describe('provider-aware thinking support', () => {
     restoreEnv('CLAUDE_CODE_USE_BEDROCK', originalBedrock)
     restoreEnv('CLAUDE_CODE_USE_VERTEX', originalVertex)
     restoreEnv('CLAUDE_CODE_USE_FOUNDRY', originalFoundry)
+    restoreEnv('CC_HAHA_SEND_DISABLED_THINKING', originalExplicitDisabledThinking)
     clearCapabilityCache()
   })
 
@@ -59,6 +67,24 @@ describe('provider-aware thinking support', () => {
 
     expect(modelSupportsThinking('claude-sonnet-4-6')).toBe(true)
     expect(modelSupportsAdaptiveThinking('claude-sonnet-4-6')).toBe(true)
+  })
+
+  test('only sends explicit disabled thinking when the provider opts in', () => {
+    delete process.env.CC_HAHA_SEND_DISABLED_THINKING
+    expect(shouldSendExplicitDisabledThinking()).toBe(false)
+
+    process.env.CC_HAHA_SEND_DISABLED_THINKING = '1'
+    expect(shouldSendExplicitDisabledThinking()).toBe(true)
+  })
+
+  test('side queries inherit explicit disabled thinking for opted-in providers', () => {
+    delete process.env.CC_HAHA_SEND_DISABLED_THINKING
+    expect(resolveSideQueryThinkingConfig(undefined, 1024)).toBeUndefined()
+
+    process.env.CC_HAHA_SEND_DISABLED_THINKING = '1'
+    expect(resolveSideQueryThinkingConfig(undefined, 1024)).toEqual({ type: 'disabled' })
+    expect(resolveSideQueryThinkingConfig(false, 1024)).toEqual({ type: 'disabled' })
+    expect(resolveSideQueryThinkingConfig(256, 1024)).toEqual({ type: 'enabled', budget_tokens: 256 })
   })
 })
 

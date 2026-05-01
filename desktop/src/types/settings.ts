@@ -16,6 +16,7 @@ export type UserSettings = {
   model?: string
   modelContext?: string
   effort?: EffortLevel
+  alwaysThinkingEnabled?: boolean
   permissionMode?: PermissionMode
   theme?: ThemeMode
   skipWebFetchPreflight?: boolean

@@ -1236,6 +1236,7 @@ type RuntimeSettings = {
   permissionMode?: string
   model?: string
   effort?: string
+  thinking?: 'disabled'
   providerId?: string | null
 }
 
@@ -1259,11 +1260,13 @@ async function getRuntimeSettings(sessionId?: string): Promise<RuntimeSettings> 
       typeof userSettings.effort === 'string' && userSettings.effort.trim()
         ? userSettings.effort
         : undefined
+    const thinking = resolveDesktopThinkingMode(userSettings)
 
     return {
       permissionMode: await settingsService.getPermissionMode().catch(() => undefined),
       model: runtimeOverride.modelId,
       effort,
+      thinking,
       providerId: runtimeOverride.providerId,
     }
   }
@@ -1294,6 +1297,7 @@ async function getDefaultRuntimeSettings(): Promise<RuntimeSettings> {
     typeof userSettings.effort === 'string' && userSettings.effort.trim()
       ? userSettings.effort
       : undefined
+  const thinking = resolveDesktopThinkingMode(userSettings)
 
   let model: string | undefined
   if (resolvedActiveId) {
@@ -1320,8 +1324,15 @@ async function getDefaultRuntimeSettings(): Promise<RuntimeSettings> {
     permissionMode: await settingsService.getPermissionMode().catch(() => undefined),
     model,
     effort,
+    thinking,
     providerId: resolvedActiveId,
   }
+}
+
+function resolveDesktopThinkingMode(
+  settings: Record<string, unknown>,
+): 'disabled' | undefined {
+  return settings.alwaysThinkingEnabled === false ? 'disabled' : undefined
 }
 
 async function buildSessionStartupDiagnosticMessage(

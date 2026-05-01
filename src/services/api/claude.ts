@@ -181,6 +181,7 @@ import { endQueryProfile, queryCheckpoint } from 'src/utils/queryProfiler.js'
 import {
   modelSupportsAdaptiveThinking,
   modelSupportsThinking,
+  shouldSendExplicitDisabledThinking,
   type ThinkingConfig,
 } from 'src/utils/thinking.js'
 import {
@@ -1627,6 +1628,10 @@ async function* queryModel(
           type: 'enabled',
         } satisfies BetaMessageStreamParams['thinking']
       }
+    } else if (shouldSendExplicitDisabledThinking()) {
+      thinking = {
+        type: 'disabled',
+      } as unknown as BetaMessageStreamParams['thinking']
     }
 
     // Get API context management strategies if enabled

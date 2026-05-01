@@ -106,7 +106,11 @@ describe('Settings > General tab', () => {
 
     useSettingsStore.setState({
       locale: 'en',
+      thinkingEnabled: true,
       skipWebFetchPreflight: true,
+      setThinkingEnabled: vi.fn().mockImplementation(async (enabled: boolean) => {
+        useSettingsStore.setState({ thinkingEnabled: enabled })
+      }),
       setSkipWebFetchPreflight: vi.fn().mockImplementation(async (enabled: boolean) => {
         useSettingsStore.setState({ skipWebFetchPreflight: enabled })
       }),
@@ -148,6 +152,18 @@ describe('Settings > General tab', () => {
     fireEvent.click(toggle)
 
     expect(useSettingsStore.getState().setSkipWebFetchPreflight).toHaveBeenCalledWith(false)
+  })
+
+  it('lets the user disable thinking mode for new sessions', () => {
+    render(<Settings />)
+
+    fireEvent.click(screen.getByText('General'))
+
+    const toggle = screen.getByLabelText('Enable thinking mode')
+    expect(toggle).toBeChecked()
+    fireEvent.click(toggle)
+
+    expect(useSettingsStore.getState().setThinkingEnabled).toHaveBeenCalledWith(false)
   })
 
   it('keeps extension tabs available alongside the terminal tab', () => {

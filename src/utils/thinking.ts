@@ -6,6 +6,7 @@ import { getCanonicalName } from './model/model.js'
 import { get3PModelCapabilityOverride } from './model/modelSupportOverrides.js'
 import { getAPIProvider, isFirstPartyAnthropicBaseUrl } from './model/providers.js'
 import { getSettingsWithErrors } from './settings/settings.js'
+import { isEnvTruthy } from './envUtils.js'
 
 export type ThinkingConfig =
   | { type: 'adaptive' }
@@ -169,4 +170,8 @@ export function shouldEnableThinkingByDefault(): boolean {
 
   // Enable thinking by default unless explicitly disabled.
   return true
+}
+
+export function shouldSendExplicitDisabledThinking(): boolean {
+  return isEnvTruthy(process.env.CC_HAHA_SEND_DISABLED_THINKING)
 }

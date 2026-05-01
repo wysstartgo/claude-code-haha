@@ -19,6 +19,7 @@ type SettingsStore = {
   permissionMode: PermissionMode
   currentModel: ModelInfo | null
   effortLevel: EffortLevel
+  thinkingEnabled: boolean
   availableModels: ModelInfo[]
   activeProviderName: string | null
   locale: Locale
@@ -31,6 +32,7 @@ type SettingsStore = {
   setPermissionMode: (mode: PermissionMode) => Promise<void>
   setModel: (modelId: string) => Promise<void>
   setEffort: (level: EffortLevel) => Promise<void>
+  setThinkingEnabled: (enabled: boolean) => Promise<void>
   setLocale: (locale: Locale) => void
   setTheme: (theme: ThemeMode) => Promise<void>
   setSkipWebFetchPreflight: (enabled: boolean) => Promise<void>
@@ -40,6 +42,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   permissionMode: 'default',
   currentModel: null,
   effortLevel: 'medium',
+  thinkingEnabled: true,
   availableModels: [],
   activeProviderName: null,
   locale: getStoredLocale(),
@@ -66,6 +69,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         activeProviderName: modelsRes.provider?.name ?? null,
         currentModel: model,
         effortLevel: level,
+        thinkingEnabled: userSettings.alwaysThinkingEnabled !== false,
         theme,
         skipWebFetchPreflight: userSettings.skipWebFetchPreflight !== false,
         isLoading: false,
@@ -102,6 +106,16 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       await modelsApi.setEffort(level)
     } catch {
       set({ effortLevel: prev })
+    }
+  },
+
+  setThinkingEnabled: async (enabled) => {
+    const prev = get().thinkingEnabled
+    set({ thinkingEnabled: enabled })
+    try {
+      await settingsApi.updateUser({ alwaysThinkingEnabled: enabled ? undefined : false })
+    } catch {
+      set({ thinkingEnabled: prev })
     }
   },
 

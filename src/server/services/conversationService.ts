@@ -49,6 +49,7 @@ type SessionStartOptions = {
   permissionMode?: string
   model?: string
   effort?: string
+  thinking?: 'enabled' | 'adaptive' | 'disabled'
   providerId?: string | null
 }
 
@@ -589,6 +590,10 @@ export class ConversationService {
       args.push('--effort', options.effort)
     }
 
+    if (options?.thinking) {
+      args.push('--thinking', options.thinking)
+    }
+
     return args
   }
 
@@ -615,6 +620,7 @@ export class ConversationService {
       'ANTHROPIC_DEFAULT_SONNET_MODEL_SUPPORTED_CAPABILITIES',
       'ANTHROPIC_DEFAULT_OPUS_MODEL',
       'ANTHROPIC_DEFAULT_OPUS_MODEL_SUPPORTED_CAPABILITIES',
+      'CC_HAHA_SEND_DISABLED_THINKING',
     ] as const
 
     const cleanEnv = { ...process.env }
@@ -738,6 +744,7 @@ export class ConversationService {
         'ANTHROPIC_DEFAULT_SONNET_MODEL_SUPPORTED_CAPABILITIES',
         'ANTHROPIC_DEFAULT_OPUS_MODEL',
         'ANTHROPIC_DEFAULT_OPUS_MODEL_SUPPORTED_CAPABILITIES',
+        'CC_HAHA_SEND_DISABLED_THINKING',
       ].some((key) => typeof env[key] === 'string' && env[key]!.trim().length > 0)
     } catch {
       return false
