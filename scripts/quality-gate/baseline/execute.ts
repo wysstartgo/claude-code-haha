@@ -71,7 +71,7 @@ function listFiles(root: string, current = root): string[] {
   return files.sort()
 }
 
-function changedFiles(beforeDir: string, afterDir: string) {
+export function changedFiles(beforeDir: string, afterDir: string) {
   const before = new Set(listFiles(beforeDir))
   const after = new Set(listFiles(afterDir))
   const changed = new Set<string>()
@@ -95,7 +95,7 @@ function changedFiles(beforeDir: string, afterDir: string) {
   return [...changed].sort()
 }
 
-async function writeDiffPatch(beforeDir: string, afterDir: string, patchPath: string) {
+export async function writeDiffPatch(beforeDir: string, afterDir: string, patchPath: string) {
   const result = await runCommand(['git', 'diff', '--no-index', '--', beforeDir, afterDir], process.cwd())
   writeFileSync(patchPath, `${result.stdout}${result.stderr}`)
 }

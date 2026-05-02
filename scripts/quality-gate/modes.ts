@@ -57,5 +57,18 @@ export function lanesForMode(mode: QualityGateMode, baselineTargets: BaselineTar
     }
   }
 
+  for (const target of targets) {
+    const targetSlug = target.label.replace(/[^a-zA-Z0-9._-]+/g, '-')
+    lanes.push({
+      id: `desktop-smoke:agent-browser-chat:${targetSlug}`,
+      title: `Desktop agent-browser chat smoke (${target.label})`,
+      description: 'Open the desktop web app with agent-browser, send a real chat task, and verify the model edits a fixture project through the UI.',
+      kind: 'desktop-smoke',
+      baselineTarget: target,
+      requiredForModes: ['baseline', 'release'],
+      live: true,
+    })
+  }
+
   return lanes.filter((lane) => lane.requiredForModes.includes(mode))
 }
